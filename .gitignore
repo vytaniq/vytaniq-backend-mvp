@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# AI and Docs
+.cursorrules
+PRD.md
+*.md
+
+# Local Environment
+.env
+.env.local
+.env.production
