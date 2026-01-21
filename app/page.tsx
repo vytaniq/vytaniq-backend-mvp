@@ -33,22 +33,38 @@ import { createClient } from '@/utils/supabase/client';
 export default function Home() {
   const supabase = createClient();
 
+  // const handleLogin = async () => {
+  //   await supabase.auth.signInWithOAuth({
+  //     provider: 'google',
+  //     options: {
+  //       // This line is the magic fix: it uses your Vercel URL when live
+  //       redirectTo: `${window.location.origin}/api/auth/callback`,
+  //       queryParams: {
+  //         access_type: 'offline',
+  //         prompt: 'consent',
+  //         // Health Scopes
+  //         scope: 'https://www.googleapis.com/auth/fitness.activity.read https://www.googleapis.com/auth/fitness.body.read https://www.googleapis.com/auth/fitness.sleep.read'
+  //       },
+  //     },
+  //   });
+  // };
   const handleLogin = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        // This line is the magic fix: it uses your Vercel URL when live
-        redirectTo: `${window.location.origin}/api/auth/callback`,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-          // Health Scopes
-          scope: 'https://www.googleapis.com/auth/fitness.activity.read https://www.googleapis.com/auth/fitness.body.read https://www.googleapis.com/auth/fitness.sleep.read'
-        },
+  await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: `${window.location.origin}/api/auth/callback`,
+      queryParams: {
+        access_type: 'offline',
+        prompt: 'consent',
+        // CRITICAL: We must add the first two scopes for Supabase to work
+        scope: 'https://www.googleapis.com/auth/userinfo.email ' + 
+               'https://www.googleapis.com/auth/userinfo.profile ' + 
+               'https://www.googleapis.com/auth/fitness.activity.read ' + 
+               'https://www.googleapis.com/auth/fitness.body.read'
       },
-    });
-  };
-
+    },
+  });
+};
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-900 dark:to-slate-800">
       <main className="flex flex-col items-center justify-center gap-8 text-center px-6">
