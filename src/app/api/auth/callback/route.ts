@@ -106,6 +106,28 @@
 // }
 
 
+// import { createClient } from '@/utils/supabase/server';
+// import { NextResponse } from 'next/server';
+
+// export async function GET(request: Request) {
+//   const { searchParams, origin } = new URL(request.url);
+//   const code = searchParams.get('code');
+
+//   if (code) {
+//     const supabase = await createClient();
+//     const { error } = await supabase.auth.exchangeCodeForSession(code);
+    
+//     if (!error) {
+//       // Directs the user to the dashboard once session is saved
+//       return NextResponse.redirect(`${origin}/dashboard`);
+//     }
+//   }
+
+//   // If error or no code, return to landing page
+//   return NextResponse.redirect(`${origin}`);
+// }
+
+
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 
@@ -115,14 +137,24 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
     
-    if (!error) {
-      // Directs the user to the dashboard once session is saved
+    // Exchange the code for a session
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+    if (!error && data.session) {
+      const refreshToken = data.session.provider_refresh_token;
+
+      // If we got a Google Refresh Token, save it to the profile!
+      if (refreshToken) {
+        await supabase
+          .from('profiles')
+          .update({ google_fit_refresh_token: refreshToken })
+          .eq('id', data.session.user.id);
+      }
+
       return NextResponse.redirect(`${origin}/dashboard`);
     }
   }
 
-  // If error or no code, return to landing page
-  return NextResponse.redirect(`${origin}`);
+  return NextResponse.redirect(`${origin}/auth/auth-error`);
 }

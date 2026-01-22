@@ -48,19 +48,32 @@ export default function Home() {
   //     },
   //   });
   // };
-  const handleLogin = async () => {
+//   const handleLogin = async () => {
+//   await supabase.auth.signInWithOAuth({
+//     provider: 'google',
+//     options: {
+//       redirectTo: `${window.location.origin}/api/auth/callback`,
+//       queryParams: {
+//         access_type: 'offline',
+//         prompt: 'consent',
+//         // CRITICAL: We must add the first two scopes for Supabase to work
+//         scope: 'https://www.googleapis.com/auth/userinfo.email ' + 
+//                'https://www.googleapis.com/auth/userinfo.profile ' + 
+//                'https://www.googleapis.com/auth/fitness.activity.read ' + 
+//                'https://www.googleapis.com/auth/fitness.body.read'
+//       },
+//     },
+//   });
+// };
+// Inside app/page.tsx
+const handleLogin = async () => {
   await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
       redirectTo: `${window.location.origin}/api/auth/callback`,
       queryParams: {
-        access_type: 'offline',
-        prompt: 'consent',
-        // CRITICAL: We must add the first two scopes for Supabase to work
-        scope: 'https://www.googleapis.com/auth/userinfo.email ' + 
-               'https://www.googleapis.com/auth/userinfo.profile ' + 
-               'https://www.googleapis.com/auth/fitness.activity.read ' + 
-               'https://www.googleapis.com/auth/fitness.body.read'
+        access_type: 'offline', // Requests the refresh token
+        prompt: 'consent',     // FORCES Google to show the screen you just saw again
       },
     },
   });
