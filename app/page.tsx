@@ -66,15 +66,29 @@ export default function Home() {
 //   });
 // };
 // Inside app/page.tsx
+// const handleLogin = async () => {
+//   await supabase.auth.signInWithOAuth({
+//     provider: 'google',
+//     options: {
+//       redirectTo: `${window.location.origin}/api/auth/callback`,
+//       queryParams: {
+//         access_type: 'offline', // Requests the refresh token
+//         prompt: 'consent',     // FORCES Google to show the screen you just saw again
+//       },
+//     },
+//   });
+// };
 const handleLogin = async () => {
   await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
       redirectTo: `${window.location.origin}/api/auth/callback`,
       queryParams: {
-        access_type: 'offline', // Requests the refresh token
-        prompt: 'consent',     // FORCES Google to show the screen you just saw again
+        access_type: 'offline',
+        prompt: 'consent',
       },
+      // ADD THESE EXACT SCOPES BELOW
+      scopes: 'openid email profile https://www.googleapis.com/auth/fitness.activity.read https://www.googleapis.com/auth/fitness.sleep.read https://www.googleapis.com/auth/fitness.body.read',
     },
   });
 };
