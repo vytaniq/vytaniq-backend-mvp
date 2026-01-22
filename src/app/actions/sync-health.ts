@@ -136,6 +136,112 @@
 // }
 
 
+// 'use server';
+
+// import { createClient } from '@/utils/supabase/server';
+// import { google } from 'googleapis';
+
+// export async function syncHealthData() {
+//   try {
+//     const supabase = await createClient();
+
+//     const { data: { user } } = await supabase.auth.getUser();
+//     if (!user) return { error: 'User not authenticated' };
+
+//     const { data: profile } = await supabase
+//       .from('profiles')
+//       .select('google_fit_refresh_token')
+//       .eq('id', user.id)
+//       .single();
+
+//     if (!profile?.google_fit_refresh_token) {
+//       return { error: 'No Google Fit refresh token found. Please sign out and in again.' };
+//     }
+
+//     const oauth2Client = new google.auth.OAuth2(
+//       process.env.GOOGLE_CLIENT_ID,
+//       process.env.GOOGLE_CLIENT_SECRET,
+//       process.env.GOOGLE_REDIRECT_URI
+//     );
+
+//     oauth2Client.setCredentials({
+//       refresh_token: profile.google_fit_refresh_token,
+//     });
+
+//     const fitness = google.fitness({ version: 'v1', auth: oauth2Client });
+//     const endTime = Date.now();
+//     const startTime = endTime - 24 * 60 * 60 * 1000;
+
+//     let stepCount = 0;
+//     let sleepDuration = 0;
+
+//     // 1. Fetch Steps (using generic dataTypeName for better reliability)
+//     try {
+//       const stepsRes = await fitness.users.dataset.aggregate({
+//         userId: 'me',
+//         requestBody: {
+//           aggregateBy: [{ dataTypeName: 'com.google.step_count.delta' }],
+//           bucketByTime: { durationMillis: (24 * 60 * 60 * 1000).toString() },
+//           startTimeMillis: startTime.toString(),
+//           endTimeMillis: endTime.toString(),
+//         },
+//       });
+
+//       // Graceful check for empty buckets
+//       const points = stepsRes.data.bucket?.[0]?.dataset?.[0]?.point;
+//       if (points && points.length > 0) {
+//         stepCount = points[0].value?.[0]?.intVal || 0;
+//       }
+//     } catch (e) { console.warn('Steps fetch failed', e); }
+
+//     // 2. Fetch Sleep
+//     try {
+//       const sleepRes = await fitness.users.dataset.aggregate({
+//         userId: 'me',
+//         requestBody: {
+//           aggregateBy: [{ dataTypeName: 'com.google.sleep.segment' }],
+//           bucketByTime: { durationMillis: (24 * 60 * 60 * 1000).toString() },
+//           startTimeMillis: startTime.toString(),
+//           endTimeMillis: endTime.toString(),
+//         },
+//       });
+
+//       const sleepPoints = sleepRes.data.bucket?.[0]?.dataset?.[0]?.point || [];
+//       let totalSleepMs = 0;
+//       sleepPoints.forEach((point: any) => {
+//         const start = parseInt(point.startTimeNanos);
+//         const end = parseInt(point.endTimeNanos);
+//         totalSleepMs += (end - start) / 1000000;
+//       });
+//       sleepDuration = Math.round((totalSleepMs / 1000 / 60 / 60) * 10) / 10;
+//     } catch (e) { console.warn('Sleep fetch failed', e); }
+
+//     // 3. THE FIX: Actually save the data to the database!
+//     const { error: saveError } = await supabase
+//       .from('health_metrics')
+//       .insert({
+//         user_id: user.id,
+//         step_count: stepCount,      // Added this
+//         sleep_duration: sleepDuration, // Added this
+//         measured_at: new Date().toISOString(),
+//       });
+
+//     if (saveError) {
+//       console.error('Database Save Error:', saveError);
+//       return { error: 'Failed to save health metrics to database' };
+//     }
+
+//     return {
+//       success: true,
+//       data: { stepCount, sleepDuration },
+//     };
+//   } catch (error) {
+//     console.error('Sync process error:', error);
+//     return { error: 'An unexpected error occurred' };
+//   }
+// }
+
+
 'use server';
 
 import { createClient } from '@/utils/supabase/server';
@@ -144,7 +250,6 @@ import { google } from 'googleapis';
 export async function syncHealthData() {
   try {
     const supabase = await createClient();
-
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { error: 'User not authenticated' };
 
@@ -154,9 +259,7 @@ export async function syncHealthData() {
       .eq('id', user.id)
       .single();
 
-    if (!profile?.google_fit_refresh_token) {
-      return { error: 'No Google Fit refresh token found. Please sign out and in again.' };
-    }
+    if (!profile?.google_fit_refresh_token) return { error: 'No token found' };
 
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
@@ -164,79 +267,52 @@ export async function syncHealthData() {
       process.env.GOOGLE_REDIRECT_URI
     );
 
-    oauth2Client.setCredentials({
-      refresh_token: profile.google_fit_refresh_token,
+    oauth2Client.setCredentials({ refresh_token: profile.google_fit_refresh_token });
+    const fitness = google.fitness({ version: 'v1', auth: oauth2Client });
+
+    // Set time for the last 7 days to ensure we find SOMETHING
+    const endTime = Date.now();
+    const startTime = endTime - (7 * 24 * 60 * 60 * 1000); 
+
+    console.log(`Syncing for user: ${user.email} from ${new Date(startTime).toISOString()}`);
+
+    const res = await fitness.users.dataset.aggregate({
+      userId: 'me',
+      requestBody: {
+        aggregateBy: [
+          { dataTypeName: "com.google.step_count.delta" },
+          { dataTypeName: "com.google.sleep.segment" }
+        ],
+        bucketByTime: { durationMillis: (24 * 60 * 60 * 1000).toString() },
+        startTimeMillis: startTime.toString(),
+        endTimeMillis: endTime.toString(),
+      },
     });
 
-    const fitness = google.fitness({ version: 'v1', auth: oauth2Client });
-    const endTime = Date.now();
-    const startTime = endTime - 24 * 60 * 60 * 1000;
+    // DEBUG: This will show up in your Vercel Logs!
+    console.log("Google Raw Response Buckets:", JSON.stringify(res.data.bucket, null, 2));
 
     let stepCount = 0;
-    let sleepDuration = 0;
-
-    // 1. Fetch Steps (using generic dataTypeName for better reliability)
-    try {
-      const stepsRes = await fitness.users.dataset.aggregate({
-        userId: 'me',
-        requestBody: {
-          aggregateBy: [{ dataTypeName: 'com.google.step_count.delta' }],
-          bucketByTime: { durationMillis: (24 * 60 * 60 * 1000).toString() },
-          startTimeMillis: startTime.toString(),
-          endTimeMillis: endTime.toString(),
-        },
-      });
-
-      // Graceful check for empty buckets
-      const points = stepsRes.data.bucket?.[0]?.dataset?.[0]?.point;
-      if (points && points.length > 0) {
-        stepCount = points[0].value?.[0]?.intVal || 0;
-      }
-    } catch (e) { console.warn('Steps fetch failed', e); }
-
-    // 2. Fetch Sleep
-    try {
-      const sleepRes = await fitness.users.dataset.aggregate({
-        userId: 'me',
-        requestBody: {
-          aggregateBy: [{ dataTypeName: 'com.google.sleep.segment' }],
-          bucketByTime: { durationMillis: (24 * 60 * 60 * 1000).toString() },
-          startTimeMillis: startTime.toString(),
-          endTimeMillis: endTime.toString(),
-        },
-      });
-
-      const sleepPoints = sleepRes.data.bucket?.[0]?.dataset?.[0]?.point || [];
-      let totalSleepMs = 0;
-      sleepPoints.forEach((point: any) => {
-        const start = parseInt(point.startTimeNanos);
-        const end = parseInt(point.endTimeNanos);
-        totalSleepMs += (end - start) / 1000000;
-      });
-      sleepDuration = Math.round((totalSleepMs / 1000 / 60 / 60) * 10) / 10;
-    } catch (e) { console.warn('Sleep fetch failed', e); }
-
-    // 3. THE FIX: Actually save the data to the database!
-    const { error: saveError } = await supabase
-      .from('health_metrics')
-      .insert({
-        user_id: user.id,
-        step_count: stepCount,      // Added this
-        sleep_duration: sleepDuration, // Added this
-        measured_at: new Date().toISOString(),
-      });
-
-    if (saveError) {
-      console.error('Database Save Error:', saveError);
-      return { error: 'Failed to save health metrics to database' };
+    // Get the most recent bucket that has data
+    const buckets = res.data.bucket || [];
+    for (const bucket of buckets.reverse()) {
+        const points = bucket.dataset?.[0]?.point || [];
+        if (points.length > 0) {
+            stepCount = points[0].value?.[0]?.intVal || 0;
+            if (stepCount > 0) break; // Found the latest day with steps
+        }
     }
 
-    return {
-      success: true,
-      data: { stepCount, sleepDuration },
-    };
-  } catch (error) {
-    console.error('Sync process error:', error);
-    return { error: 'An unexpected error occurred' };
+    // Save to DB
+    await supabase.from('health_metrics').insert({
+      user_id: user.id,
+      step_count: stepCount,
+      measured_at: new Date().toISOString(),
+    });
+
+    return { success: true, data: { stepCount } };
+  } catch (error: any) {
+    console.error('SYNC ERROR:', error.response?.data || error.message);
+    return { error: 'Sync failed' };
   }
 }
